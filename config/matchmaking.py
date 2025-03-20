@@ -1,5 +1,6 @@
 import tkinter as tk
 import socketio
+import subprocess
 
 SERVER_URL = "https://17d6-80-70-37-74.ngrok-free.app"
 
@@ -15,6 +16,7 @@ def start_matchmaking(root):
     def on_match_found(data):
         status_label.config(text=f"Match trouvé ! Adversaire: {data['opponent']}")
         join_button.config(state=tk.NORMAL)
+        subprocess.Popen(["python", "Jeux/game.py"])
 
     # Supprime les widgets existants dans la fenêtre
     for widget in root.winfo_children():
