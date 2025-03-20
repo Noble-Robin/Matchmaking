@@ -126,77 +126,19 @@ class Pawn(Piece):
         return moves
 
 class ChessBoard:
-    """Classe représentant l'échiquier."""
     def __init__(self):
-        # Initialisation de l'échiquier avec les pièces
-        self.board = [
-            [Rook('black'), Knight('black'), Bishop('black'), Queen('black'), King('black'), Bishop('black'), Knight('black'), Rook('black')],
-            [Pawn('black'), Pawn('black'), Pawn('black'), Pawn('black'), Pawn('black'), Pawn('black'), Pawn('black'), Pawn('black')],
-            [None, None, None, None, None, None, None, None],
-            [None, None, None, None, None, None, None, None],
-            [None, None, None, None, None, None, None, None],
-            [None, None, None, None, None, None, None, None],
-            [Pawn('white'), Pawn('white'), Pawn('white'), Pawn('white'), Pawn('white'), Pawn('white'), Pawn('white'), Pawn('white')],
-            [Rook('white'), Knight('white'), Bishop('white'), Queen('white'), King('white'), Bishop('white'), Knight('white'), Rook('white')],
-        ]
+        self.board = self.create_board()
 
-    def move_piece(self, start, end):
-        """Déplace une pièce de start à end."""
-        piece = self.board[start[0]][start[1]]
-        self.board[end[0]][end[1]] = piece
-        self.board[start[0]][start[1]] = None
+    def create_board(self):
+        """Crée l'échiquier avec les pièces placées initialement."""
+        board = [[None] * 8 for _ in range(8)]
+        # Ajouter les pièces ici
+        return board
 
-    def is_in_check(self, color):
-        """Vérifie si le roi d'une couleur est en échec"""
-        king_position = None
-        for row in range(8):
-            for col in range(8):
-                piece = self.board[row][col]
-                if piece and piece.color == color and isinstance(piece, King):
-                    king_position = (row, col)
-                    break
-
-        if not king_position:
-            return False
-
-        for row in range(8):
-            for col in range(8):
-                piece = self.board[row][col]
-                if piece and piece.color != color:
-                    possible_moves = piece.get_moves((row, col), self.board)
-                    if king_position in possible_moves:
-                        return True
-
-        return False
-
-    def is_checkmate(self, color):
-        """Vérifie si le joueur est en échec et mat"""
-        if not self.is_in_check(color):
-            return False
-
-        for row in range(8):
-            for col in range(8):
-                piece = self.board[row][col]
-                if piece and piece.color == color:
-                    possible_moves = piece.get_moves((row, col), self.board)
-                    for move in possible_moves:
-                        original_piece = self.board[move[0]][move[1]]
-                        self.board[move[0]][move[1]] = piece
-                        self.board[row][col] = None
-                        in_check = self.is_in_check(color)
-
-                        self.board[row][col] = piece
-                        self.board[move[0]][move[1]] = original_piece
-
-                        if not in_check:
-                            return False
-
-        return True
-    
     def is_check(self, color):
         """Retourne True si le roi de la couleur donnée est en échec."""
-        # Trouver le roi de la couleur donnée
         king_pos = None
+        # Trouver la position du roi
         for row in range(8):
             for col in range(8):
                 piece = self.board[row][col]
@@ -214,3 +156,58 @@ class ChessBoard:
                     if (row, col) in piece.get_moves((row, col), self.board):
                         return True
         return False
+
+    def is_checkmate(self, color):
+        """Retourne True si le roi de la couleur donnée est en échec et mat."""
+        # Vérifier si le roi est en échec
+        if not self.is_check(color):
+            return False
+
+        # Trouver la position du roi
+        king_pos = None
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if isinstance(piece, King) and piece.color == color:
+                    king_pos = (row, col)
+                    break
+            if king_pos:
+                break
+
+        # Vérifier si le roi peut se déplacer pour sortir de l'échec
+        possible_moves = King(color).get_moves(king_pos, self.board)
+        for move in possible_moves:
+            if not self.is_check_after_move(king_pos, move, color):
+                return False
+
+        # Vérifier si d'autres pièces peuvent intercepter l'attaque
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece and piece.color == color:
+                    if piece != self.board[king_pos[0]][king_pos[1]]:  # Ignorer le roi
+                        piece_moves = piece.get_moves((row, col), self.board)
+                        for move in piece_moves:
+                            if not self.is_check_after_move((row, col), move, color):
+                                return False
+
+        return True
+
+    def is_check_after_move(self, start_pos, end_pos, color):
+        """Vérifie si le roi serait toujours en échec après un mouvement."""
+        # Simuler le mouvement et vérifier si le roi serait en échec
+        temp_board = self.clone_board()
+        temp_board.move_piece(start_pos, end_pos)
+        return temp_board.is_check(color)
+
+    def clone_board(self):
+        """Crée une copie de l'échiquier actuel pour simuler un mouvement."""
+        new_board = ChessBoard()
+        new_board.board = [row[:] for row in self.board]
+        return new_board
+
+    def move_piece(self, start_pos, end_pos):
+        """Déplace une pièce de start_pos à end_pos."""
+        piece = self.board[start_pos[0]][start_pos[1]]
+        self.board[end_pos[0]][end_pos[1]] = piece
+        self.board[start_pos[0]][start_pos[1]] = None
