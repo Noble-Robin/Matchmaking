@@ -126,13 +126,43 @@ class Pawn(Piece):
         return moves
 
 class ChessBoard:
-    def __init__(self):
-        self.board = self.create_board()
+    def __init__(self, player_color):
+        self.player_color = player_color
+        self.board = self.create_board(player_color)
 
-    def create_board(self):
-        """Crée l'échiquier avec les pièces placées initialement."""
+    def create_board(self, player_color):
+        """Crée l'échiquier avec les pièces placées initialement, en fonction de la couleur du joueur."""
         board = [[None] * 8 for _ in range(8)]
-        # Ajouter les pièces ici
+
+        # Déterminer les couleurs des joueurs
+        opponent_color = 'white' if player_color == 'black' else 'black'
+
+        # Placement des pièces du joueur (en bas)
+        player_row, player_pawn_row = (7, 6) 
+        board[player_row][0] = Rook(player_color)
+        board[player_row][1] = Knight(player_color)
+        board[player_row][2] = Bishop(player_color)
+        board[player_row][3] = Queen(player_color)
+        board[player_row][4] = King(player_color)
+        board[player_row][5] = Bishop(player_color)
+        board[player_row][6] = Knight(player_color)
+        board[player_row][7] = Rook(player_color)
+        for col in range(8):
+            board[player_pawn_row][col] = Pawn(player_color)
+
+        # Placement des pièces de l'adversaire (en haut)
+        opponent_row, opponent_pawn_row = (0, 1)
+        board[opponent_row][0] = Rook(opponent_color)
+        board[opponent_row][1] = Knight(opponent_color)
+        board[opponent_row][2] = Bishop(opponent_color)
+        board[opponent_row][3] = Queen(opponent_color)
+        board[opponent_row][4] = King(opponent_color)
+        board[opponent_row][5] = Bishop(opponent_color)
+        board[opponent_row][6] = Knight(opponent_color)
+        board[opponent_row][7] = Rook(opponent_color)
+        for col in range(8):
+            board[opponent_pawn_row][col] = Pawn(opponent_color)
+
         return board
 
     def is_check(self, color):

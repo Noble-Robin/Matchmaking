@@ -3,7 +3,7 @@ from tkinter import ttk
 import socketio
 import subprocess
 
-SERVER_URL = "https://17d6-80-70-37-74.ngrok-free.app"
+SERVER_URL = "https://b84b-80-70-37-74.ngrok-free.app"
 
 sio = socketio.Client()
 
@@ -15,9 +15,9 @@ def start_matchmaking(root):
         sio.emit('join_queue')
 
     def on_match_found(data):
-        status_label.config(text=f"Match trouvé ! Adversaire: {data['opponent']}")
+        status_label.config(text=f"Match trouvé !\nAdversaire: {data['opponent']}\nVotre couleur : {data['color']}")
         join_button.config(state=tk.NORMAL)
-        subprocess.Popen(["python", "game/game.py"])
+        subprocess.Popen(["python", "game/game.py", data['color']])
 
     # Supprime les widgets existants dans la fenêtre
     for widget in root.winfo_children():

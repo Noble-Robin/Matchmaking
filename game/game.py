@@ -1,3 +1,4 @@
+import sys
 import pygame
 from board import ChessBoard, King, Queen, Rook, Bishop, Knight, Pawn
 
@@ -15,11 +16,11 @@ pygame.display.set_caption("Jeu d'Échecs")
 
 # Classe pour gérer l'UI du jeu
 class Game:
-    def __init__(self):
-        self.board = ChessBoard()
+    def __init__(self, player_color):
+        self.board = ChessBoard(player_color)
         self.selected_piece = None
         self.valid_moves = []
-        self.current_player = 'white'  # Commence avec les blancs
+        self.current_player = "white"
 
     def draw_board(self):
         """Dessine l'échiquier sur l'écran."""
@@ -50,7 +51,7 @@ class Game:
 
     def draw_piece(self, piece, row, col):
         """Dessine une pièce spécifique à une position donnée."""
-        piece_image = pygame.image.load(f"assets/{piece.color}_{type(piece).__name__.lower()}.png")
+        piece_image = pygame.image.load(f"game/assets/{piece.color}_{type(piece).__name__.lower()}.png")
         piece_image = pygame.transform.scale(piece_image, (SQUARE_SIZE, SQUARE_SIZE))
         screen.blit(piece_image, (col * SQUARE_SIZE, row * SQUARE_SIZE))
 
@@ -117,5 +118,6 @@ class Game:
         pygame.quit()
 
 if __name__ == "__main__":
-    game = Game()
+    player_color = sys.argv[1] if len(sys.argv) > 1 else 'white'
+    game = Game(player_color)
     game.game_loop()

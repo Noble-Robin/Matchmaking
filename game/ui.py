@@ -28,11 +28,12 @@ def load_piece_images():
                 PIECE_IMAGES[f"{color}_{piece}"] = pygame.transform.scale(image, (SQUARE_SIZE, SQUARE_SIZE))
 
 class ChessUI:
-    def __init__(self):
+    def __init__(self, player_color):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Jeu d'Échecs")
-        self.board = ChessBoard()
+        self.player_color = player_color
+        self.board = ChessBoard(player_color)
         self.selected_piece = None
         self.valid_moves = []
         self.running = True
@@ -42,49 +43,55 @@ class ChessUI:
         """Dessine l'échiquier"""
         for row in range(8):
             for col in range(8):
+                # Inverser les coordonnées si le joueur est noir
+                display_row = 7 - row if self.player_color == 'black' else row
+                display_col = 7 - col if self.player_color == 'black' else col
+
                 color = WHITE if (row + col) % 2 == 0 else BLACK
-                pygame.draw.rect(self.screen, color, (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+                pygame.draw.rect(self.screen, color, (display_col * SQUARE_SIZE, display_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
 
                 # Met en surbrillance les cases valides
                 if (row, col) in self.valid_moves:
                     highlight_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
                     highlight_surface.fill(HIGHLIGHT_COLOR)
-                    self.screen.blit(highlight_surface, (col * SQUARE_SIZE, row * SQUARE_SIZE))
+                    self.screen.blit(highlight_surface, (display_col * SQUARE_SIZE, display_row * SQUARE_SIZE))
 
     def draw_pieces(self):
         """Affiche les pièces avec des images"""
         for row in range(8):
             for col in range(8):
+                # Inverser les coordonnées si le joueur est noir
+                display_row = 7 - row if self.board.player_color == 'black' else row
+                display_col = 7 - col if self.board.player_color == 'black' else col
+
                 piece = self.board.board[row][col]
                 if piece:
                     piece_name = f"{piece.color}_{type(piece).__name__.lower()}"
                     if piece_name in PIECE_IMAGES:
-                        self.screen.blit(PIECE_IMAGES[piece_name], (col * SQUARE_SIZE, row * SQUARE_SIZE))
+                        self.screen.blit(PIECE_IMAGES[piece_name], (display_col * SQUARE_SIZE, display_row * SQUARE_SIZE))
 
     def handle_click(self, pos):
         """Gère le clic de la souris"""
-        row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
+        col, row = pos[0] // SQUARE_SIZE, pos[1] // SQUARE_SIZE
+
+        # Inverser les coordonnées si le joueur est noir
+        actual_row = 7 - row if self.board.player_color == 'black' else row
+        actual_col = 7 - col if self.board.player_color == 'black' else col
 
         if self.selected_piece is None:
             # Sélection d'une pièce
-            piece = self.board.board[row][col]
-            if piece:
-                self.selected_piece = (row, col)
-                self.valid_moves = piece.get_moves((row, col), self.board.board)  # Obtenir les déplacements possibles
+            piece = self.board.board[actual_row][actual_col]
+            if piece and piece.color == self.board.player_color:  # Vérifier que la pièce appartient au joueur
+                self.selected_piece = (actual_row, actual_col)
+                self.valid_moves = piece.get_moves((actual_row, actual_col), self.board.board)  # Obtenir les déplacements possibles
         else:
             # Déplacement ou prise
-            if (row, col) in self.valid_moves:
-                target_piece = self.board.board[row][col]
-                if target_piece:
-                    if target_piece.color != self.board.board[self.selected_piece[0]][self.selected_piece[1]].color:
-                        # Capture d'une pièce ennemie
-                        print(f"{target_piece.color} {type(target_piece).__name__} capturé !")
+            if (actual_row, actual_col) in self.valid_moves:
+                self.board.move_piece(self.selected_piece, (actual_row, actual_col))
 
-            self.board.move_piece(self.selected_piece, (row, col))
-
-        # Réinitialiser la sélection après le déplacement
-        self.selected_piece = None
-        self.valid_moves = []
+            # Réinitialiser la sélection après le déplacement
+            self.selected_piece = None
+            self.valid_moves = []
 
 
     def run(self):
