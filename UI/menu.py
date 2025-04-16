@@ -19,7 +19,7 @@ def show_menu():
         """Remplace le contenu de la fenêtre par l'interface de matchmaking."""
         for widget in root.winfo_children():
             widget.destroy()
-        start_matchmaking(root)
+        start_matchmaking(root, show_menu)
 
     # Titre
     title_label = tk.Label(root, text="Menu Principal", font=("Helvetica", 18, "bold"), bg="#2c3e50", fg="white")

@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import socketio
 import subprocess
 
@@ -7,12 +7,16 @@ SERVER_URL = "https://b84b-80-70-37-74.ngrok-free.app"
 
 sio = socketio.Client()
 
-def start_matchmaking(root):
+def start_matchmaking(root, on_error_callback):
     """Configure l'interface de matchmaking dans la fenêtre principale."""
     def join_queue():
         join_button.config(state=tk.DISABLED)
         status_label.config(text="En attente d'un adversaire...")
-        sio.emit('join_queue')
+        try:
+            sio.emit('join_queue')
+        except Exception as e:
+            status_label.config(text=f"Erreur lors de la tentative de rejoindre la file : {e}")
+            join_button.config(state=tk.NORMAL)
 
     def on_match_found(data):
         status_label.config(text=f"Match trouvé !\nAdversaire: {data['opponent']}\nVotre couleur : {data['color']}")
@@ -31,7 +35,20 @@ def start_matchmaking(root):
 
     # Configure l'interface de matchmaking
     sio.on('match_found', on_match_found)
-    sio.connect(SERVER_URL, headers={"ngrok-skip-browser-warning": "true"})
+    try:
+        sio.connect(SERVER_URL, headers={"ngrok-skip-browser-warning": "true"})
+    except socketio.exceptions.ConnectionError as e:
+        messagebox.showerror("Erreur de connexion", f"Impossible de se connecter au serveur : {e}")
+        sio.disconnect()
+        root.destroy()
+        on_error_callback()
+        return
+    except Exception as e:
+        messagebox.showerror("Erreur", f"Une erreur inattendue s'est produite : {e}")
+        sio.disconnect()
+        root.destroy()
+        on_error_callback()
+        return
 
     title_label = tk.Label(root, text="Matchmaking", font=("Helvetica", 18, "bold"), bg="#2c3e50", fg="white")
     title_label.pack(pady=20)
