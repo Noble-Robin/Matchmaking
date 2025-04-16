@@ -80,21 +80,33 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-let waitingPlayer = null;
+let queue = [];
 
 io.on('connection', (socket) => {
     console.log('Un joueur connecté:', socket.id);
 
-    if (waitingPlayer) {
-        socket.emit('match_found', { opponent: waitingPlayer.id });
-        waitingPlayer.emit('match_found', { opponent: socket.id });
-        waitingPlayer = null;
-    } else {
-        waitingPlayer = socket;
-    }
+    socket.on('join_queue', () => {
+        queue.push(socket);
+        console.log(`Joueur ${socket.id} ajouté à la file d'attente. Taille de la file: ${queue.length}`);
+
+        if (queue.length >= 2) {
+            const player1 = queue.shift();
+            const player2 = queue.shift();
+
+            const colors = ['white', 'black'];
+            const player1Color = colors[Math.floor(Math.random() * colors.length)];
+            const player2Color = player1Color === 'white' ? 'black' : 'white';
+
+            player1.emit('match_found', { opponent: player2.id, color: player1Color });
+            player2.emit('match_found', { opponent: player1.id, color: player2Color });
+
+            console.log(`Match trouvé entre ${player1.id} (couleur: ${player1Color}) et ${player2.id} (couleur: ${player2Color})`);
+        }
+    });
 
     socket.on('disconnect', () => {
-        if (waitingPlayer === socket) waitingPlayer = null;
+        queue = queue.filter(player => player.id !== socket.id);
+        console.log(`Joueur ${socket.id} déconnecté et retiré de la file.`);
     });
 });
 
