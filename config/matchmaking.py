@@ -7,13 +7,17 @@ SERVER_URL = "https://b84b-80-70-37-74.ngrok-free.app"
 
 sio = socketio.Client()
 
-def start_matchmaking(root, on_error_callback):
+def start_matchmaking(root, on_error_callback, user_info):
     """Configure l'interface de matchmaking dans la fenêtre principale."""
     def join_queue():
         join_button.config(state=tk.DISABLED)
         status_label.config(text="En attente d'un adversaire...")
         try:
-            sio.emit('join_queue')
+            sio.emit('join_queue', {
+                "id": user_info["id"],
+                "elo": user_info["elo"],
+                "guest": user_info["guest"]
+            })
         except Exception as e:
             status_label.config(text=f"Erreur lors de la tentative de rejoindre la file : {e}")
             join_button.config(state=tk.NORMAL)
