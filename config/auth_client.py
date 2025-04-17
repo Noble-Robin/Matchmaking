@@ -2,15 +2,13 @@ import requests
 import tkinter as tk
 from tkinter import messagebox
 
-def login_menu(root):
+def login_menu(root, on_success):
     for widget in root.winfo_children():
         widget.destroy()
 
     root.title("Connexion au Jeu d'Échecs")
     root.geometry("400x300")
     root.configure(bg="#2c3e50")
-
-    result = {}
 
     tk.Label(root, text="Connexion / Inscription", font=("Helvetica", 16, "bold"), bg="#2c3e50", fg="white").pack(pady=15)
 
@@ -35,29 +33,26 @@ def login_menu(root):
             })
             if response.status_code == 200:
                 data = response.json()
-                result.update({
+                user_info = {
                     "id": data["id"],
                     "username": username,
                     "elo": data["elo"],
                     "guest": False
-                })
-                root.quit()
+                }
+                on_success(user_info)
             else:
                 messagebox.showerror("Erreur", response.json().get("error", "Erreur inconnue."))
         except Exception as e:
             messagebox.showerror("Erreur", f"Impossible de se connecter : {e}")
 
     def play_guest():
-        result.update({
+        user_info = {
             "id": None,
             "username": "Invité",
             "elo": 1200,
             "guest": True
-        })
-        root.quit()
+        }
+        on_success(user_info)
 
     tk.Button(root, text="Connexion / Inscription", command=do_connect, bg="#3498db", fg="white", font=("Helvetica", 12)).pack(pady=10)
     tk.Button(root, text="Jouer en tant qu'invité", command=play_guest, bg="#95a5a6", fg="white", font=("Helvetica", 12)).pack(pady=5)
-
-    root.mainloop()
-    return result if result else None

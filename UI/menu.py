@@ -4,11 +4,11 @@ from config.auth_client import login_menu
 from config.matchmaking import start_matchmaking
 
 def show_menu():
-    """Affiche le menu principal avec un style modernisé."""
+    """Affiche le menu principal"""
     root = tk.Tk()
     root.title("Menu Principal")
     root.geometry("400x300")
-    root.configure(bg="#2c3e50")  # Couleur de fond
+    root.configure(bg="#2c3e50")
 
     # Configuration du style
     style = ttk.Style()
@@ -17,19 +17,24 @@ def show_menu():
     style.map("TButton", background=[("active", "#2980b9")])
 
     def handle_login():
-        user_info = login_menu(root)
-        if user_info:
+        def on_success(user_info):
             start_matchmaking(root, show_menu, user_info)
+        login_menu(root, on_success)
 
-    # Titre
-    title_label = tk.Label(root, text="Menu Principal", font=("Helvetica", 18, "bold"), bg="#2c3e50", fg="white")
-    title_label.pack(pady=20)
+    def draw_main_menu():
+        for widget in root.winfo_children():
+            widget.destroy()
 
-    # Boutons
-    play_button = ttk.Button(root, text="Jouer", command=handle_login)
-    play_button.pack(pady=10)
+        # Titre
+        title_label = tk.Label(root, text="Menu Principal", font=("Helvetica", 18, "bold"), bg="#2c3e50", fg="white")
+        title_label.pack(pady=20)
 
-    quit_button = ttk.Button(root, text="Quitter", command=root.quit)
-    quit_button.pack(pady=10)
+        # Boutons
+        play_button = ttk.Button(root, text="Jouer", command=handle_login)
+        play_button.pack(pady=10)
 
+        quit_button = ttk.Button(root, text="Quitter", command=root.quit)
+        quit_button.pack(pady=10)
+
+    draw_main_menu()
     root.mainloop()
