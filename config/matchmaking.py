@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import socketio
 import subprocess
+import requests
 
 SERVER_URL = "https://b84b-80-70-37-74.ngrok-free.app"
 
@@ -23,9 +24,25 @@ def start_matchmaking(root, on_error_callback, user_info):
             join_button.config(state=tk.NORMAL)
 
     def on_match_found(data):
-        status_label.config(text=f"Match trouvé !\nAdversaire: {data['opponent']}\nVotre couleur : {data['color']}")
-        join_button.config(state=tk.NORMAL)
-        subprocess.Popen(["python", "game/game.py", data['color']])
+        def update_ui():
+            try:
+                if not data['opponent_guest']:
+                    response = requests.get(f"{SERVER_URL}/api/user/{data['opponent']}")
+                    if response.status_code == 200:
+                        opponent_data = response.json()
+                        opponent_info = f"{opponent_data['username']} (ELO: {opponent_data['elo']})"
+                    else:
+                        opponent_info = "Joueur inconnu"
+                else:
+                    opponent_info = "Invité"
+            except Exception as e:
+                opponent_info = f"Erreur de récupération : {e}"
+
+            status_label.config(text=f"Match trouvé !\nAdversaire: {opponent_info}\nVotre couleur : {data['color']}")
+            join_button.config(state=tk.NORMAL)
+            subprocess.Popen(["python", "game/game.py", data['color']])
+
+        root.after(0, update_ui)
 
     # Supprime les widgets existants dans la fenêtre
     for widget in root.winfo_children():
