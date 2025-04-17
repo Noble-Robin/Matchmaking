@@ -154,6 +154,16 @@ app.post('/api/auth', async (req, res) => {
     });
 });
 
+// Route pour récupérer les infos d'un utilisateur à partir de son ID
+app.get('/api/user/:id', (req, res) => {
+    const { id } = req.params;
+    db.get('SELECT username, elo FROM users WHERE id = ?', [id], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!row) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        res.status(200).json(row);
+    });
+});
+
 // Matchmaking queue
 let queue = [];
 
