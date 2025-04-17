@@ -11,7 +11,7 @@ Notre réseaux est composé d'un serveur et de 2 pc. Le serveur est utilisé pou
     - crée la communication entre les pc
 
 2 pc joueur :
-    - jeux installer dessus
+    - jeux installé dessus
 
 
 # Installation et configuration d'une VM serveur pour le matchmaking
@@ -66,7 +66,7 @@ npm init -y
 ### 📌 Installation des dépendances
 
 ```bash
-npm install express socket.io
+npm install express socket.io sqlite3 cors body-parser uuid bcrypt
 ```
 
 ### 📌 Création du fichier `server.js`
@@ -75,42 +75,121 @@ npm install express socket.io
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const sqlite3 = require('sqlite3').verbose();
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    cors: { origin: '*' }
+});
 
+// Middleware
+app.use(cors());
+app.use(bodyParser.json());
+
+// DB INIT
+const db = new sqlite3.Database('./chess.db');
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT,
+        elo INTEGER DEFAULT 1200
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS games (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+        player_white TEXT,
+        player_black TEXT,
+        winner TEXT,
+        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        ended_at DATETIME
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS current_games (
+        game_id TEXT PRIMARY KEY,
+        player_white TEXT,
+        player_black TEXT,
+        board_state TEXT,
+        white_time_left INTEGER,
+        black_time_left INTEGER,
+        last_move_at DATETIME
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS moves (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_id TEXT,
+        turn INTEGER,
+        move TEXT,
+        player TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+});
+
+// Auth route (login/register)
+app.post('/api/auth', async (req, res) => {
+    const { username, password } = req.body;
+    db.get('SELECT * FROM users WHERE username = ?', [username], async (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        if (row) {
+            const valid = await bcrypt.compare(password, row.password);
+            if (valid) {
+                return res.status(200).json({ message: 'Login OK', id: row.id, elo: row.elo });
+            } else {
+                return res.status(403).json({ error: 'Mot de passe incorrect' });
+            }
+        } else {
+            const hashed = await bcrypt.hash(password, 10);
+            const id = uuidv4();
+            db.run('INSERT INTO users (id, username, password) VALUES (?, ?, ?)', [id, username, hashed], (err) => {
+                if (err) return res.status(500).json({ error: err.message });
+                return res.status(200).json({ message: 'Compte créé', id, elo: 1200 });
+            });
+        }
+    });
+});
+
+// Matchmaking queue
 let queue = [];
 
 io.on('connection', (socket) => {
-    console.log('Un joueur connecté:', socket.id);
+    console.log('Connecté :', socket.id);
 
-    socket.on('join_queue', () => {
-        queue.push(socket);
-        console.log(`Joueur ${socket.id} ajouté à la file d'attente. Taille de la file: ${queue.length}`);
+    socket.on('join_queue', ({ id, elo, guest }) => {
+        const player = { socket, id, elo: guest ? 1200 : elo, guest };
+        queue.push(player);
+        console.log(`${id || socket.id} en file (${guest ? 'invité' : 'utilisateur'}). File: ${queue.length}`);
 
-        if (queue.length >= 2) {
-            const player1 = queue.shift();
-            const player2 = queue.shift();
+        const index = queue.findIndex(p => p.socket.id !== socket.id &&
+            (guest || p.guest || Math.abs(p.elo - player.elo) <= 150));
+
+        if (index !== -1) {
+            const opponent = queue.splice(index, 1)[0];
+            queue = queue.filter(p => p.socket.id !== socket.id);
 
             const colors = ['white', 'black'];
-            const player1Color = colors[Math.floor(Math.random() * colors.length)];
-            const player2Color = player1Color === 'white' ? 'black' : 'white';
+            const color1 = colors[Math.floor(Math.random() * 2)];
+            const color2 = color1 === 'white' ? 'black' : 'white';
 
-            player1.emit('match_found', { opponent: player2.id, color: player1Color });
-            player2.emit('match_found', { opponent: player1.id, color: player2Color });
+            player.socket.emit('match_found', { opponent: opponent.id || opponent.socket.id, color: color1 });
+            opponent.socket.emit('match_found', { opponent: player.id || socket.id, color: color2 });
 
-            console.log(`Match trouvé entre ${player1.id} (couleur: ${player1Color}) et ${player2.id} (couleur: ${player2Color})`);
+            // TODO: Créer current_games dans DB ici
         }
     });
 
     socket.on('disconnect', () => {
-        queue = queue.filter(player => player.id !== socket.id);
-        console.log(`Joueur ${socket.id} déconnecté et retiré de la file.`);
+        queue = queue.filter(p => p.socket.id !== socket.id);
+        console.log('Déconnecté :', socket.id);
     });
 });
 
-server.listen(3000, "0.0.0.0", () => console.log("Serveur en écoute sur le port 3000"));
+server.listen(3000, () => console.log('Serveur en écoute sur le port 3000'));
 ```
 
 ---
