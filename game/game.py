@@ -1,123 +1,156 @@
-import sys
+### game/game.py
+
 import pygame
-from board import ChessBoard, King, Queen, Rook, Bishop, Knight, Pawn
+import sys
+import os
+import tkinter as tk
+from functools import partial
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Paramètres
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 800
-SQUARE_SIZE = SCREEN_WIDTH // 8
-WHITE = (255, 255, 255)
-BLACK = (0, 120, 0)
+from game_state import GameState
 
-# Initialisation de pygame
-pygame.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Jeu d'Échecs")
+WIDTH, HEIGHT = 640, 640
+ROWS, COLS = 8, 8
+SQUARE_SIZE = WIDTH // COLS
 
-# Classe pour gérer l'UI du jeu
-class Game:
-    def __init__(self, player_color):
-        self.board = ChessBoard(player_color)
-        self.selected_piece = None
-        self.valid_moves = []
-        self.current_player = "white"
+# Couleurs
+WHITE = (245, 245, 245)
+GRAY = (100, 100, 100)
+DARK = (50, 50, 50)
+HIGHLIGHT = (106, 168, 79)
+SELECTED = (255, 255, 0)
+TARGET = (255, 0, 0)
 
-    def draw_board(self):
-        """Dessine l'échiquier sur l'écran."""
-        for row in range(8):
-            for col in range(8):
-                # Déterminer la couleur de la case
-                color = WHITE if (row + col) % 2 == 0 else BLACK
-                # Dessiner la case
-                pygame.draw.rect(screen, color, pygame.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
-    
-                # Si la pièce sélectionnée est sur cette case, dessiner un rectangle bleu clair autour de la case
-                if self.selected_piece == (row, col):
-                    pygame.draw.rect(screen, (173, 216, 230), pygame.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE), 5)
-    
-                # Si le roi est en échec, dessiner la case du roi en rouge
-                if isinstance(self.board.board[row][col], King):
-                    king = self.board.board[row][col]
-                    if self.board.is_check(king.color):  # Vérifier si le roi est en échec
-                        pygame.draw.rect(screen, (255, 0, 0), pygame.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE), 5)
+# Chargement des images
+IMAGES = {}
 
-    def draw_pieces(self):
-        """Dessine toutes les pièces sur l'échiquier."""
-        for row in range(8):
-            for col in range(8):
-                piece = self.board.board[row][col]
-                if piece:
-                    self.draw_piece(piece, row, col)
+def load_images():
+    pieces = ["pawn", "rook", "knight", "bishop", "queen", "king"]
+    colors = ["white", "black"]
+    for color in colors:
+        for piece in pieces:
+            path = f"assets/{color}_{piece}.png"
+            IMAGES[f"{color}_{piece}"] = pygame.transform.scale(pygame.image.load(path), (SQUARE_SIZE, SQUARE_SIZE))
 
-    def draw_piece(self, piece, row, col):
-        """Dessine une pièce spécifique à une position donnée."""
-        piece_image = pygame.image.load(f"game/assets/{piece.color}_{type(piece).__name__.lower()}.png")
-        piece_image = pygame.transform.scale(piece_image, (SQUARE_SIZE, SQUARE_SIZE))
-        screen.blit(piece_image, (col * SQUARE_SIZE, row * SQUARE_SIZE))
+def draw_board(win):
+    win.fill(WHITE)
+    for row in range(ROWS):
+        for col in range(COLS):
+            color = GRAY if (row + col) % 2 == 0 else DARK
+            pygame.draw.rect(win, color, (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
 
-    def handle_click(self, pos):
-        """Gère le clic de la souris."""
-        row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
+def draw_pieces(win, board, player_color):
+    for row in range(ROWS):
+        for col in range(COLS):
+            draw_row = row if player_color == "white" else ROWS - 1 - row
+            draw_col = col if player_color == "white" else COLS - 1 - col
+            piece = board.get_piece(draw_row, draw_col)
+            if piece:
+                name = piece.__class__.__name__.lower()
+                key = f"{piece.color}_{name}"
+                win.blit(IMAGES[key], (col * SQUARE_SIZE, row * SQUARE_SIZE))
 
-        # Si une pièce est déjà sélectionnée
-        if self.selected_piece:
-            if (row, col) in self.valid_moves:
-                # Déplacer la pièce
-                self.board.move_piece(self.selected_piece, (row, col))
-                self.switch_turn()  # Changer de joueur après chaque mouvement
-                self.selected_piece = None
-                self.valid_moves = []
-            else:
-                # Deselect the current piece if clicked again
-                piece = self.board.board[row][col]
-                if piece and piece.color == self.current_player:
-                    self.selected_piece = (row, col)
-                    self.valid_moves = piece.get_moves((row, col), self.board.board)
+def highlight_squares(win, selected_square, moves, player_color):
+    if selected_square:
+        row, col = selected_square
+        draw_row = row if player_color == "white" else ROWS - 1 - row
+        draw_col = col if player_color == "white" else COLS - 1 - col
+        pygame.draw.rect(win, SELECTED, (draw_col * SQUARE_SIZE, draw_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE), 4)
+
+    for row, col in moves:
+        draw_row = row if player_color == "white" else ROWS - 1 - row
+        draw_col = col if player_color == "white" else COLS - 1 - col
+        pygame.draw.circle(win, TARGET,
+            (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + SQUARE_SIZE // 2), 10)
+
+def ask_promotion_gui(color):
+    choice = []
+    root = tk.Tk()
+    root.title("Choisir une pièce pour la promotion")
+    root.geometry("300x80")
+
+    def choose(piece):
+        choice.append(piece)
+        root.destroy()
+
+    frame = tk.Frame(root)
+    frame.pack(pady=10)
+
+    for piece in ["queen", "rook", "bishop", "knight"]:
+        icon_path = os.path.join("assets", f"{color}_{piece}.png")
+        image = tk.PhotoImage(file=icon_path).subsample(2, 2)
+        button = tk.Button(frame, image=image, command=partial(choose, piece))
+        button.image = image
+        button.pack(side=tk.LEFT, padx=5)
+
+    root.mainloop()
+    return choice[0] if choice else "queen"
+
+def display_winner(win, winner):
+    font = pygame.font.SysFont("arial", 32, True)
+    text = f"Échec et mat : {winner} gagne !" if winner in ["white", "black"] else "Match nul !"
+    label = font.render(text, True, (255, 0, 0))
+    win.blit(label, (WIDTH // 2 - label.get_width() // 2, HEIGHT // 2 - label.get_height() // 2))
+    pygame.display.update()
+    pygame.time.wait(4000)
+
+def main(color="white"):
+    pygame.init()
+    win = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Jeu d'échecs")
+
+    load_images()
+    clock = pygame.time.Clock()
+    gs = GameState()
+    selected_square = None
+    valid_moves = []
+    player_color = color
+
+    running = True
+    while running:
+        clock.tick(60)
+        draw_board(win)
+        highlight_squares(win, selected_square, valid_moves, player_color)
+        draw_pieces(win, gs.board, player_color)
+        pygame.display.flip()
+
+        if gs.is_game_over():
+            display_winner(win, gs.winner)
+            running = False
+            continue
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                pos = pygame.mouse.get_pos()
+                row = pos[1] // SQUARE_SIZE
+                col = pos[0] // SQUARE_SIZE
+                actual_row = row if player_color == "white" else ROWS - 1 - row
+                actual_col = col if player_color == "white" else COLS - 1 - col
+
+                if selected_square:
+                    moved, promotion_pos = gs.play_move(selected_square, (actual_row, actual_col))
+                    if moved and promotion_pos:
+                        choice = ask_promotion_gui(gs.board.get_piece(*promotion_pos).color)
+                        gs.promote_pawn(promotion_pos, choice)
+
+                    selected_square = None
+                    valid_moves = []
+                    if not moved:
+                        piece = gs.board.get_piece(actual_row, actual_col)
+                        if piece and piece.color == gs.current_turn:
+                            selected_square = (actual_row, actual_col)
+                            valid_moves = gs.get_valid_moves(actual_row, actual_col)
                 else:
-                    self.selected_piece = None
-                    self.valid_moves = []
-        else:
-            # Aucune pièce sélectionnée, essayer de sélectionner une nouvelle pièce
-            piece = self.board.board[row][col]
-            if piece and piece.color == self.current_player:
-                self.selected_piece = (row, col)
-                self.valid_moves = piece.get_moves((row, col), self.board.board)
-            else:
-                self.selected_piece = None
-                self.valid_moves = []
+                    piece = gs.board.get_piece(actual_row, actual_col)
+                    if piece and piece.color == gs.current_turn:
+                        selected_square = (actual_row, actual_col)
+                        valid_moves = gs.get_valid_moves(actual_row, actual_col)
 
-    def switch_turn(self):
-        """Change de joueur après chaque tour."""
-        if self.current_player == 'white':
-            self.current_player = 'black'
-        else:
-            self.current_player = 'white'
-
-    def game_loop(self):
-        """Boucle principale du jeu."""
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    pos = pygame.mouse.get_pos()
-                    self.handle_click(pos)
-
-            # Dessiner le jeu
-            self.draw_board()
-            self.draw_pieces()
-
-            # Afficher le joueur actuel
-            font = pygame.font.Font(None, 36)
-            text = font.render(f"Tour: {self.current_player.capitalize()}", True, (255, 0, 0))
-            screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, 20))
-
-            pygame.display.flip()
-
-        pygame.quit()
+    pygame.quit()
 
 if __name__ == "__main__":
-    player_color = sys.argv[1] if len(sys.argv) > 1 else 'white'
-    game = Game(player_color)
-    game.game_loop()
+    color = sys.argv[1] if len(sys.argv) > 1 else "white"
+    main(color)
