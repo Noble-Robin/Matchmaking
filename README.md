@@ -87,11 +87,9 @@ const io = new Server(server, {
     cors: { origin: '*' }
 });
 
-// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// DB INIT
 const db = new sqlite3.Database('./chess.db');
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -102,7 +100,7 @@ db.serialize(() => {
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS games (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         player_white TEXT,
         player_black TEXT,
         winner TEXT,
@@ -130,7 +128,6 @@ id INTEGER PRIMARY KEY AUTOINCREMENT,
     )`);
 });
 
-// Auth route (login/register)
 app.post('/api/auth', async (req, res) => {
     const { username, password } = req.body;
     db.get('SELECT * FROM users WHERE username = ?', [username], async (err, row) => {
@@ -154,7 +151,6 @@ app.post('/api/auth', async (req, res) => {
     });
 });
 
-// Route pour récupérer les infos d'un utilisateur à partir de son ID
 app.get('/api/user/:id', (req, res) => {
     const { id } = req.params;
     db.get('SELECT username, elo FROM users WHERE id = ?', [id], (err, row) => {
@@ -164,8 +160,8 @@ app.get('/api/user/:id', (req, res) => {
     });
 });
 
-// Matchmaking queue
 let queue = [];
+const activeGames = {}; // { gameId: { whiteSocket, blackSocket } }
 
 io.on('connection', (socket) => {
     console.log('Connecté :', socket.id);
@@ -186,16 +182,69 @@ io.on('connection', (socket) => {
             const color1 = colors[Math.floor(Math.random() * 2)];
             const color2 = color1 === 'white' ? 'black' : 'white';
 
-            player.socket.emit('match_found', { opponent: opponent.id || opponent.socket.id, color: color1 });
-            opponent.socket.emit('match_found', { opponent: player.id || socket.id, color: color2 });
+            const gameId = uuidv4();
+            activeGames[gameId] = {
+                whiteSocket: color1 === 'white' ? player.socket : opponent.socket,
+                blackSocket: color1 === 'white' ? opponent.socket : player.socket
+            };
 
-            // TODO: Créer current_games dans DB ici
+            // Création de current_games
+            db.run(
+              `INSERT OR REPLACE INTO current_games (game_id, player_white, player_black, board_state, white_time_left, black_time_left)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [gameId, color1 === 'white' ? player.id : opponent.id, color1 === 'white' ? opponent.id : player.id, '', 600, 600]
+            );
+
+            player.socket.emit('match_found', { opponent: opponent.id || opponent.socket.id, color: color1, gameId, opponent_guest: opponent.guest });
+            opponent.socket.emit('match_found', { opponent: player.id || socket.id, color: color2, gameId, opponent_guest: player.guest });
         }
+    });
+
+    socket.on('move', ({ start, end, gameId, playerId }) => {
+        const moveStr = `${start[0]},${start[1]}->${end[0]},${end[1]}`;
+
+        db.run(
+          `INSERT INTO moves (game_id, move, player) VALUES (?, ?, ?)`,
+          [gameId, moveStr, playerId]
+        );
+
+        const players = activeGames[gameId];
+        if (!players) return;
+
+        if (players.whiteSocket === socket && players.blackSocket) {
+            players.blackSocket.emit('opponent_move', { start, end });
+        } else if (players.blackSocket === socket && players.whiteSocket) {
+            players.whiteSocket.emit('opponent_move', { start, end });
+        }
+    });
+
+    socket.on('end_game', ({ gameId, winner }) => {
+        const players = activeGames[gameId];
+        if (!players) return;
+
+        db.get(`SELECT player_white, player_black FROM current_games WHERE game_id = ?`, [gameId], (err, row) => {
+            if (!err && row) {
+                db.run(`INSERT INTO games (player_white, player_black, winner) VALUES (?, ?, ?)`, [
+                    row.player_white,
+                    row.player_black,
+                    winner === 'draw' ? null : winner
+                ]);
+            }
+
+            db.run(`DELETE FROM current_games WHERE game_id = ?`, [gameId]);
+            delete activeGames[gameId];
+        });
     });
 
     socket.on('disconnect', () => {
         queue = queue.filter(p => p.socket.id !== socket.id);
         console.log('Déconnecté :', socket.id);
+
+        for (const [gameId, players] of Object.entries(activeGames)) {
+            if (players.whiteSocket === socket || players.blackSocket === socket) {
+                delete activeGames[gameId];
+            }
+        }
     });
 });
 

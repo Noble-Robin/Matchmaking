@@ -5,6 +5,7 @@ import sys
 import os
 import tkinter as tk
 from functools import partial
+from config.socket_client import sio, game_handler
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from game_state import GameState
@@ -95,6 +96,7 @@ def display_winner(win, winner):
     pygame.time.wait(4000)
 
 def main(color="white"):
+    global gs, is_my_turn
     pygame.init()
     win = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Jeu d'échecs")
@@ -105,17 +107,30 @@ def main(color="white"):
     selected_square = None
     valid_moves = []
     player_color = color
+    is_my_turn = (color == "white")
+
+    gameId = sys.argv[2] if len(sys.argv) > 2 else ""
+    playerId = sys.argv[3] if len(sys.argv) > 3 else ""
+
+    game_handler["on_opponent_move"] = lambda data: (
+        gs.play_move(tuple(data["start"]), tuple(data["end"])),
+        globals().__setitem__('is_my_turn', True)
+    )
 
     running = True
     while running:
         clock.tick(60)
         draw_board(win)
-        highlight_squares(win, selected_square, valid_moves, player_color)
         draw_pieces(win, gs.board, player_color)
+        highlight_squares(win, selected_square, valid_moves, player_color)
         pygame.display.flip()
 
         if gs.is_game_over():
             display_winner(win, gs.winner)
+            sio.emit("end_game", {
+                "gameId": gameId,
+                "winner": gs.winner
+            })
             running = False
             continue
 
@@ -123,7 +138,7 @@ def main(color="white"):
             if event.type == pygame.QUIT:
                 running = False
 
-            if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.type == pygame.MOUSEBUTTONDOWN and is_my_turn:
                 pos = pygame.mouse.get_pos()
                 row = pos[1] // SQUARE_SIZE
                 col = pos[0] // SQUARE_SIZE
@@ -132,9 +147,17 @@ def main(color="white"):
 
                 if selected_square:
                     moved, promotion_pos = gs.play_move(selected_square, (actual_row, actual_col))
-                    if moved and promotion_pos:
-                        choice = ask_promotion_gui(gs.board.get_piece(*promotion_pos).color)
-                        gs.promote_pawn(promotion_pos, choice)
+                    if moved:
+                        is_my_turn = False
+                        sio.emit("move", {
+                            "start": selected_square,
+                            "end": (actual_row, actual_col),
+                            "gameId": gameId,
+                            "playerId": playerId
+                        })
+                        if promotion_pos:
+                            choice = ask_promotion_gui(gs.board.get_piece(*promotion_pos).color)
+                            gs.promote_pawn(promotion_pos, choice)
 
                     selected_square = None
                     valid_moves = []

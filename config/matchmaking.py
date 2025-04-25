@@ -40,7 +40,7 @@ def start_matchmaking(root, on_error_callback, user_info):
 
             status_label.config(text=f"Match trouvé !\nAdversaire: {opponent_info}\nVotre couleur : {data['color']}")
             join_button.config(state=tk.NORMAL)
-            subprocess.Popen(["python", "game/game.py", data['color']])
+            subprocess.Popen(["python", "-m", "game.game", data['color'], data['gameId']])
 
         root.after(0, update_ui)
 
