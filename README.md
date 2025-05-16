@@ -161,10 +161,25 @@ app.get('/api/user/:id', (req, res) => {
 });
 
 let queue = [];
-const activeGames = {}; // { gameId: { whiteSocket, blackSocket } }
+const activeGames = {}; // gameId -> { white: { id, socketId }, black: { id, socketId } }
 
 io.on('connection', (socket) => {
     console.log('Connecté :', socket.id);
+
+    socket.on('register_socket', ({ gameId, playerColor }) => {
+        if (!activeGames[gameId]) {
+            console.warn(`[REGISTER] gameId inconnu : ${gameId}`);
+            return;
+        }
+
+        if (playerColor === 'white') {
+            activeGames[gameId].white.socketId = socket.id;
+        } else if (playerColor === 'black') {
+            activeGames[gameId].black.socketId = socket.id;
+        }
+
+        console.log(`[REGISTER] ${playerColor} socket mis à jour pour gameId ${gameId} : ${socket.id}`);
+    });
 
     socket.on('join_queue', ({ id, elo, guest }) => {
         const player = { socket, id, elo: guest ? 1200 : elo, guest };
@@ -184,19 +199,35 @@ io.on('connection', (socket) => {
 
             const gameId = uuidv4();
             activeGames[gameId] = {
-                whiteSocket: color1 === 'white' ? player.socket : opponent.socket,
-                blackSocket: color1 === 'white' ? opponent.socket : player.socket
+                white: {
+                    id: color1 === 'white' ? id : opponent.id,
+                    socketId: color1 === 'white' ? socket.id : opponent.socket.id
+                },
+                black: {
+                    id: color1 === 'black' ? id : opponent.id,
+                    socketId: color1 === 'black' ? socket.id : opponent.socket.id
+                }
             };
 
-            // Création de current_games
             db.run(
               `INSERT OR REPLACE INTO current_games (game_id, player_white, player_black, board_state, white_time_left, black_time_left)
                VALUES (?, ?, ?, ?, ?, ?)`,
-              [gameId, color1 === 'white' ? player.id : opponent.id, color1 === 'white' ? opponent.id : player.id, '', 600, 600]
+              [gameId, activeGames[gameId].white.id, activeGames[gameId].black.id, '', 600, 600]
             );
 
-            player.socket.emit('match_found', { opponent: opponent.id || opponent.socket.id, color: color1, gameId, opponent_guest: opponent.guest });
-            opponent.socket.emit('match_found', { opponent: player.id || socket.id, color: color2, gameId, opponent_guest: player.guest });
+            player.socket.emit('match_found', {
+                opponent: opponent.id || opponent.socket.id,
+                color: color1,
+                gameId,
+                opponent_guest: opponent.guest
+            });
+
+            opponent.socket.emit('match_found', {
+                opponent: id || socket.id,
+                color: color2,
+                gameId,
+                opponent_guest: guest
+            });
         }
     });
 
@@ -209,13 +240,24 @@ io.on('connection', (socket) => {
         );
 
         const players = activeGames[gameId];
-        if (!players) return;
-
-        if (players.whiteSocket === socket && players.blackSocket) {
-            players.blackSocket.emit('opponent_move', { start, end });
-        } else if (players.blackSocket === socket && players.whiteSocket) {
-            players.whiteSocket.emit('opponent_move', { start, end });
+        if (!players) {
+            console.warn(`[MOVE] Ignoré : gameId inconnu ${gameId}`);
+            return;
         }
+
+        let targetSocketId = null;
+
+        if (players.white.socketId === socket.id) {
+            targetSocketId = players.black.socketId;
+        } else if (players.black.socketId === socket.id) {
+            targetSocketId = players.white.socketId;
+        } else {
+            console.warn(`[MOVE] Socket ${socket.id} non reconnu dans gameId ${gameId}`);
+            return;
+        }
+
+        console.log(`[EMIT] opponent_move à ${targetSocketId} depuis ${socket.id}`);
+        io.to(targetSocketId).emit('opponent_move', { start, end });
     });
 
     socket.on('end_game', ({ gameId, winner }) => {
@@ -241,7 +283,7 @@ io.on('connection', (socket) => {
         console.log('Déconnecté :', socket.id);
 
         for (const [gameId, players] of Object.entries(activeGames)) {
-            if (players.whiteSocket === socket || players.blackSocket === socket) {
+            if (players.white.socketId === socket.id || players.black.socketId === socket.id) {
                 delete activeGames[gameId];
             }
         }
