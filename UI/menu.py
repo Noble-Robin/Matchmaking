@@ -4,10 +4,24 @@ from config.auth_client import login_menu
 from config.matchmaking import start_matchmaking
 
 def show_menu():
-    """Affiche le menu principal"""
+    """Affiche le menu principal centré à l'écran"""
     root = tk.Tk()
     root.title("Menu Principal")
-    root.geometry("400x300")
+
+    # Taille de la fenêtre
+    window_width = 400
+    window_height = 300
+
+    # Dimensions de l'écran
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    # Calcul de la position centrée
+    x = int((screen_width - window_width) / 2)
+    y = int((screen_height - window_height) / 2)
+
+    # Appliquer la géométrie centrée
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
     root.configure(bg="#2c3e50")
 
     # Configuration du style
