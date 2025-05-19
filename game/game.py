@@ -1,4 +1,3 @@
-### game/game.py
 
 import pygame
 import sys
@@ -118,13 +117,22 @@ def main(color="white"):
         "playerColor": color
     })
 
-    game_handler["on_opponent_move"] = lambda data: (
-        gs.play_move(tuple(data["start"]), tuple(data["end"])),
+    def handle_opponent_move(data):
+        print(f"[DEBUG] Reçu coup de l’adversaire : {data}")
+        moved, promotion_pos = gs.play_move(tuple(data["start"]), tuple(data["end"]))
+
+        if data.get("promotion"):
+            gs.promote_pawn(tuple(data["end"]), data["promotion"])
+            print(f"[PROMOTION] Promotion reçue : {data['promotion']} pour {gs.board.get_piece(*tuple(data['end'])).color}")
+
         globals().__setitem__('is_my_turn', True)
-    )
+        print("[DEBUG] C’est à moi de jouer.")
+
+    game_handler["on_opponent_move"] = handle_opponent_move
 
     running = True
     while running:
+        pygame.display.set_caption(f"{'À VOUS DE JOUER' if is_my_turn else 'Attente adversaire'} ({player_color})")
         clock.tick(60)
         draw_board(win)
         draw_pieces(win, gs.board, player_color)
@@ -154,16 +162,21 @@ def main(color="white"):
                 if selected_square:
                     moved, promotion_pos = gs.play_move(selected_square, (actual_row, actual_col))
                     if moved:
+                        
+                        promotion_choice = None
+                        if promotion_pos:
+                            promotion_choice = ask_promotion_gui(gs.board.get_piece(*promotion_pos).color)
+                            gs.promote_pawn(promotion_pos, promotion_choice)
+
                         is_my_turn = False
+                        
                         sio.emit("move", {
                             "start": selected_square,
                             "end": (actual_row, actual_col),
                             "gameId": gameId,
-                            "playerId": playerId
+                            "playerId": playerId,
+                            "promotion": promotion_choice
                         })
-                        if promotion_pos:
-                            choice = ask_promotion_gui(gs.board.get_piece(*promotion_pos).color)
-                            gs.promote_pawn(promotion_pos, choice)
 
                     selected_square = None
                     valid_moves = []

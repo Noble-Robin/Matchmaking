@@ -49,15 +49,18 @@ class GameState:
             self.move_history.append((start_pos, end_pos))
 
             piece = self.board.get_piece(*end_pos)
+            promotion_pos = None
             if piece and piece.__class__.__name__ == "Pawn":
                 if (piece.color == "white" and end_pos[0] == 0) or (piece.color == "black" and end_pos[0] == 7):
-                    return True, end_pos
+                    promotion_pos = end_pos
 
+            # Inverse le tour ici après tout traitement
             self.current_turn = "black" if self.current_turn == "white" else "white"
-            return True, None
+            return True, promotion_pos
         return False, None
 
     def promote_pawn(self, position, choice):
+        print(f"[PROMOTION] Promotion en {choice} pour {self.board.get_piece(*position).color}")
         row, col = position
         color = self.board.get_piece(row, col).color
         piece_map = {
@@ -68,4 +71,5 @@ class GameState:
         }
         if choice in piece_map:
             self.board.grid[row][col] = piece_map[choice](color)
-        self.current_turn = "black" if self.current_turn == "white" else "white"
+
+        # Ne pas changer le tour ici — il est déjà changé dans play_move
