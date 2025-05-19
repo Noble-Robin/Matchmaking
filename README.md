@@ -92,6 +92,8 @@ app.use(bodyParser.json());
 
 const db = new sqlite3.Database('./chess.db');
 db.serialize(() => {
+    db.run("PRAGMA journal_mode = WAL");
+
     db.run(`CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE,
@@ -115,7 +117,8 @@ db.serialize(() => {
         board_state TEXT,
         white_time_left INTEGER,
         black_time_left INTEGER,
-        last_move_at DATETIME
+        last_move_at DATETIME,
+        current_turn TEXT
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS moves (
@@ -160,6 +163,27 @@ app.get('/api/user/:id', (req, res) => {
     });
 });
 
+app.get('/api/game_time/:gameId/:color', (req, res) => {
+    const { gameId, color } = req.params;
+    db.get('SELECT white_time_left, black_time_left, last_move_at, current_turn FROM current_games WHERE game_id = ?', [gameId], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: "Game not found" });
+        const now = Date.now();
+        const last = row.last_move_at ? new Date(row.last_move_at).getTime() : now;
+        const elapsed = Math.floor((now - last) / 1000);
+
+        let white = row.white_time_left;
+        let black = row.black_time_left;
+
+        if (row.current_turn === "white") {
+                white = Math.max(0, white - elapsed);
+        } else {
+                black = Math.max(0, black - elapsed);
+        }
+
+        res.json({ white, black });
+    });
+});
+
 let queue = [];
 const activeGames = {}; // gameId -> { white: { id, socketId }, black: { id, socketId } }
 
@@ -167,24 +191,24 @@ io.on('connection', (socket) => {
     console.log('Connecté :', socket.id);
 
     socket.on('register_socket', ({ gameId, playerColor }) => {
-        if (!activeGames[gameId]) {
-            console.warn(`[REGISTER] gameId inconnu : ${gameId}`);
-            return;
+        console.log('[REGISTER]gameId=${gameId}, color=${playerColor}, socket=${socket.id}');
+        if(!activeGames[gameId]) {
+                console.warn([REGISTER] gameId inconnu : ${gameId});
+                return;
         }
 
         if (playerColor === 'white') {
-            activeGames[gameId].white.socketId = socket.id;
+                activeGames[gameId].white.socketId = socket.id;
         } else if (playerColor === 'black') {
-            activeGames[gameId].black.socketId = socket.id;
+                activeGames[gameId].black.socketId = socket.id;
         }
-
-        console.log(`[REGISTER] ${playerColor} socket mis à jour pour gameId ${gameId} : ${socket.id}`);
+        console.log('[REGISTER] ${playerColor} socket updated for gameId ${gameId} : ${socket.id}');
     });
 
     socket.on('join_queue', ({ id, elo, guest }) => {
         const player = { socket, id, elo: guest ? 1200 : elo, guest };
         queue.push(player);
-        console.log(`${id || socket.id} en file (${guest ? 'invité' : 'utilisateur'}). File: ${queue.length}`);
+        console.log('${id || socket.id} en file (${guest ? 'invité' : 'utilisateur'}). File: ${queue.length}');
 
         const index = queue.findIndex(p => p.socket.id !== socket.id &&
             (guest || p.guest || Math.abs(p.elo - player.elo) <= 150));
@@ -200,64 +224,78 @@ io.on('connection', (socket) => {
             const gameId = uuidv4();
             activeGames[gameId] = {
                 white: {
-                    id: color1 === 'white' ? id : opponent.id,
-                    socketId: color1 === 'white' ? socket.id : opponent.socket.id
+                        id: color1 === 'white' ? player.id : opponent.id,
+                        socketId: color1 === 'white' ? socket.id : opponent.socket.id
                 },
                 black: {
-                    id: color1 === 'black' ? id : opponent.id,
-                    socketId: color1 === 'black' ? socket.id : opponent.socket.id
+                        id: color1 === 'black' ? player.id : opponent.id,
+                        socketId: color1 === 'black' ? socket.id : opponent.socket.id
                 }
             };
 
-            db.run(
-              `INSERT OR REPLACE INTO current_games (game_id, player_white, player_black, board_state, white_time_left, black_time_left)
-               VALUES (?, ?, ?, ?, ?, ?)`,
-              [gameId, activeGames[gameId].white.id, activeGames[gameId].black.id, '', 600, 600]
-            );
+            db.run('
+                INSERT OR REPLACE INTO current_games
+                (game_id, player_white, player_black, board_state, white_time_left, black_time_left, current_turn)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ', [gameId, color1 === 'white' ? player.id : opponent.id, color1 === 'white' ? opponent.id : player.id, '', 600, 600, 'white']);
 
-            player.socket.emit('match_found', {
-                opponent: opponent.id || opponent.socket.id,
-                color: color1,
-                gameId,
-                opponent_guest: opponent.guest
-            });
-
-            opponent.socket.emit('match_found', {
-                opponent: id || socket.id,
-                color: color2,
-                gameId,
-                opponent_guest: guest
-            });
+            player.socket.emit('match_found', { opponent: opponent.id || opponent.socket.id, color: color1, gameId, opponent_guest: opponent.guest });
+            opponent.socket.emit('match_found', { opponent: player.id || socket.id, color: color2, gameId, opponent_guest: player.guest });
         }
     });
 
-    socket.on('move', ({ start, end, gameId, playerId }) => {
-        const moveStr = `${start[0]},${start[1]}->${end[0]},${end[1]}`;
-
-        db.run(
-          `INSERT INTO moves (game_id, move, player) VALUES (?, ?, ?)`,
-          [gameId, moveStr, playerId]
-        );
+    socket.on('move', ({ start, end, gameId, playerId, promotion}) => {
+        const moveStr = ${start[0]},${start[1]}->${end[0]},${end[1]};
+        const now = Date.now();
 
         const players = activeGames[gameId];
         if (!players) {
-            console.warn(`[MOVE] Ignoré : gameId inconnu ${gameId}`);
-            return;
+                console.warn('[MOVE] Ignoré : gameId inconnu ${gameId}');
+                return;
         }
+
+        db.get('SELECT white_time_left, black_time_left, last_move_at, current_turn FROM current_games WHERE game_id = ?', [gameId], (err, row) => {
+            if (err || !row) return;
+
+            const now = Date.now();
+            const last = row.last_move_at ? new Date(row.last_move_at).getTime() : now;
+            const elapsedSec = Math.floor((now - last) / 1000);
+
+            let whiteTime = row.white_time_left;
+            let blackTime = row.black_time_left;
+
+            if (row.current_turn === "white") {
+                whiteTime = Math.max(0, whiteTime - elapsedSec);
+            } else {
+                blackTime = Math.max(0, blackTime - elapsedSec);
+            }
+
+            const nextTurn = row.current_turn === "white" ? "black" : "white";
+
+            db.run('UPDATE current_games SET white_time_left = ?, black_time_left = ?, last_move_at = ?, current_turn = ? WHERE game_id = ?',
+                [whiteTime, blackTime, new Date(now).toISOString(), nextTurn, gameId]);
+        });
+
+        db.run(
+          'INSERT INTO moves (game_id, move, player) VALUES (?, ?, ?),
+          [gameId, moveStr, playerId]'
+        );
 
         let targetSocketId = null;
 
         if (players.white.socketId === socket.id) {
-            targetSocketId = players.black.socketId;
+                targetSocketId = players.black.socketId;
         } else if (players.black.socketId === socket.id) {
-            targetSocketId = players.white.socketId;
+                targetSocketId = players.white.socketId;
         } else {
-            console.warn(`[MOVE] Socket ${socket.id} non reconnu dans gameId ${gameId}`);
-            return;
+                console.warn('[MOVE] Socket ${socket.id} non reconnu dans gameId ${gameId}');
+                return;
         }
 
-        console.log(`[EMIT] opponent_move à ${targetSocketId} depuis ${socket.id}`);
-        io.to(targetSocketId).emit('opponent_move', { start, end });
+        if (targetSocketId) {
+                console.log('[EMIT] opponent_move to ${targetSocketId} from ${socket.id}');
+                io.to(targetSocketId).emit('opponent_move', { start, end, promotion });
+        }
     });
 
     socket.on('end_game', ({ gameId, winner }) => {

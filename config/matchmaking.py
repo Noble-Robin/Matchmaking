@@ -4,7 +4,7 @@ import socketio
 import subprocess
 import requests
 
-SERVER_URL = "https://b84b-80-70-37-74.ngrok-free.app"
+SERVER_URL = "https://e208-176-165-126-177.ngrok-free.app"
 
 def start_matchmaking(root, on_error_callback, user_info):
     """Configure l'interface de matchmaking dans la fênêtre principale."""

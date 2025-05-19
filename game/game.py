@@ -2,14 +2,18 @@
 import pygame
 import sys
 import os
+import time
+import requests
+import threading
 import tkinter as tk
 from functools import partial
 from config.socket_client import sio, game_handler
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from game_state import GameState
+from config.matchmaking import SERVER_URL
 
-WIDTH, HEIGHT = 640, 640
+WIDTH, HEIGHT = 640, 700
 ROWS, COLS = 8, 8
 SQUARE_SIZE = WIDTH // COLS
 
@@ -37,7 +41,11 @@ def draw_board(win):
     for row in range(ROWS):
         for col in range(COLS):
             color = GRAY if (row + col) % 2 == 0 else DARK
-            pygame.draw.rect(win, color, (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+            pygame.draw.rect(
+                win, color,
+                (col * SQUARE_SIZE, row * SQUARE_SIZE + 30, SQUARE_SIZE, SQUARE_SIZE)
+            )
+
 
 def draw_pieces(win, board, player_color):
     for row in range(ROWS):
@@ -48,20 +56,41 @@ def draw_pieces(win, board, player_color):
             if piece:
                 name = piece.__class__.__name__.lower()
                 key = f"{piece.color}_{name}"
-                win.blit(IMAGES[key], (col * SQUARE_SIZE, row * SQUARE_SIZE))
+                win.blit(IMAGES[key], (col * SQUARE_SIZE, row * SQUARE_SIZE + 30))
+
+def draw_timers(win, white_time, black_time, player_color):
+        font = pygame.font.SysFont("arial", 20, True)
+        w_min, w_sec = divmod(int(white_time), 60)
+        b_min, b_sec = divmod(int(black_time), 60)
+
+        white_text = f"Blanc: {w_min:02}:{w_sec:02}"
+        black_text = f"Noir : {b_min:02}:{b_sec:02}"
+
+        white_label = font.render(white_text, True, (255, 255, 255))
+        black_label = font.render(black_text, True, (255, 255, 255))
+
+        pygame.draw.rect(win, (30, 30, 30), (0, 0, WIDTH, 30))
+        pygame.draw.rect(win, (30, 30, 30), (0, HEIGHT - 30, WIDTH, 30))
+
+        if player_color == "white":
+            win.blit(white_label, (10, HEIGHT - 25))
+            win.blit(black_label, (10, 5))
+        else:
+            win.blit(black_label, (10, HEIGHT - 25))
+            win.blit(white_label, (10, 5))
 
 def highlight_squares(win, selected_square, moves, player_color):
     if selected_square:
         row, col = selected_square
         draw_row = row if player_color == "white" else ROWS - 1 - row
         draw_col = col if player_color == "white" else COLS - 1 - col
-        pygame.draw.rect(win, SELECTED, (draw_col * SQUARE_SIZE, draw_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE), 4)
+        pygame.draw.rect(win, SELECTED, (draw_col * SQUARE_SIZE, draw_row * SQUARE_SIZE + 30, SQUARE_SIZE, SQUARE_SIZE), 4)
 
     for row, col in moves:
         draw_row = row if player_color == "white" else ROWS - 1 - row
         draw_col = col if player_color == "white" else COLS - 1 - col
         pygame.draw.circle(win, TARGET,
-            (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + SQUARE_SIZE // 2), 10)
+            (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + 30 + SQUARE_SIZE // 2), 10)
 
 def ask_promotion_gui(color):
     choice = []
@@ -111,6 +140,26 @@ def main(color="white"):
     gameId = sys.argv[2] if len(sys.argv) > 2 else ""
     playerId = sys.argv[3] if len(sys.argv) > 3 else ""
 
+    white_time = 600
+    black_time = 600
+
+    running = True
+
+    def sync_timer_loop():
+        nonlocal white_time, black_time, running
+        while running:
+            try:
+                response = requests.get(f"{SERVER_URL}/api/game_time/{gameId}/{player_color}")
+                if response.status_code == 200:
+                    data = response.json()
+                    white_time = data["white"]
+                    black_time = data["black"]
+            except Exception as e:
+                print(f"[ERROR] timer sync: {e}")
+            time.sleep(1)
+
+    threading.Thread(target=sync_timer_loop, daemon=True).start()
+
     from config.socket_client import sio
     sio.emit("register_socket", {
         "gameId": gameId,
@@ -130,13 +179,13 @@ def main(color="white"):
 
     game_handler["on_opponent_move"] = handle_opponent_move
 
-    running = True
     while running:
         pygame.display.set_caption(f"{'À VOUS DE JOUER' if is_my_turn else 'Attente adversaire'} ({player_color})")
         clock.tick(60)
         draw_board(win)
         draw_pieces(win, gs.board, player_color)
         highlight_squares(win, selected_square, valid_moves, player_color)
+        draw_timers(win, white_time, black_time, player_color)
         pygame.display.flip()
 
         if gs.is_game_over():
@@ -154,8 +203,10 @@ def main(color="white"):
 
             if event.type == pygame.MOUSEBUTTONDOWN and is_my_turn:
                 pos = pygame.mouse.get_pos()
-                row = pos[1] // SQUARE_SIZE
+                row = (pos[1] - 30) // SQUARE_SIZE
                 col = pos[0] // SQUARE_SIZE
+                if row < 0 or row >= 8 or col < 0 or col >= 8:
+                    continue
                 actual_row = row if player_color == "white" else ROWS - 1 - row
                 actual_col = col if player_color == "white" else COLS - 1 - col
 
