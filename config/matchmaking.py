@@ -7,10 +7,10 @@ import time
 
 SERVER_URL = "https://b84b-80-70-37-74.ngrok-free.app"
 
-sio = socketio.Client()
-
 def start_matchmaking(root, on_error_callback, user_info):
-    """Configure l'interface de matchmaking dans la fenêtre principale."""
+    """Configure l'interface de matchmaking dans la fênêtre principale."""
+    sio = socketio.Client()
+
     def join_queue():
         join_button.config(state=tk.DISABLED)
         status_label.config(text="En attente d'un adversaire...")
@@ -41,9 +41,9 @@ def start_matchmaking(root, on_error_callback, user_info):
 
             status_label.config(text=f"Match trouvé !\nAdversaire: {opponent_info}\nVotre couleur : {data['color']}")
             join_button.config(state=tk.NORMAL)
-            
+
             time.sleep(1)
-            
+
             subprocess.Popen(["python", "-m", "game.game", data['color'], data['gameId'], str(user_info["id"] or "")])
 
         root.after(0, update_ui)
@@ -62,6 +62,7 @@ def start_matchmaking(root, on_error_callback, user_info):
     sio.on('match_found', on_match_found)
     try:
         sio.connect(SERVER_URL, headers={"ngrok-skip-browser-warning": "true"})
+        print("[matchmaking] Connecté au serveur Socket.IO")
     except socketio.exceptions.ConnectionError as e:
         messagebox.showerror("Erreur de connexion", f"Impossible de se connecter au serveur : {e}")
         sio.disconnect()
