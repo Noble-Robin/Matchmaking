@@ -112,6 +112,12 @@ def main(color="white"):
     gameId = sys.argv[2] if len(sys.argv) > 2 else ""
     playerId = sys.argv[3] if len(sys.argv) > 3 else ""
 
+    from config.socket_client import sio
+    sio.emit("register_socket", {
+        "gameId": gameId,
+        "playerColor": color
+    })
+
     game_handler["on_opponent_move"] = lambda data: (
         gs.play_move(tuple(data["start"]), tuple(data["end"])),
         globals().__setitem__('is_my_turn', True)
