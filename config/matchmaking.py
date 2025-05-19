@@ -3,7 +3,6 @@ from tkinter import ttk, messagebox
 import socketio
 import subprocess
 import requests
-import time
 
 SERVER_URL = "https://b84b-80-70-37-74.ngrok-free.app"
 
@@ -40,9 +39,10 @@ def start_matchmaking(root, on_error_callback, user_info):
                 opponent_info = f"Erreur de récupération : {e}"
 
             status_label.config(text=f"Match trouvé !\nAdversaire: {opponent_info}\nVotre couleur : {data['color']}")
-            join_button.config(state=tk.NORMAL)
+            join_button.config(state=tk.DISABLED)
 
-            time.sleep(1)
+            root.update()
+            root.iconify()
 
             subprocess.Popen(["python", "-m", "game.game", data['color'], data['gameId'], str(user_info["id"] or "")])
 
