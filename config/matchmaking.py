@@ -53,6 +53,7 @@ def start_matchmaking(root, on_error_callback, user_info):
                 str(user_info["elo"]),
                 opponent_info,
             ])
+            root.destroy()
 
         root.after(0, update_ui)
 

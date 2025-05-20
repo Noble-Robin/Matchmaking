@@ -4,6 +4,7 @@ import os
 import threading
 import time
 import requests
+import subprocess
 import tkinter as tk
 from functools import partial
 from config.socket_client import sio, game_handler
@@ -169,6 +170,61 @@ def draw_captured_pieces(win, gs):
             scaled = pygame.transform.scale(img, (icon_size, icon_size))
             win.blit(scaled, (10, y_start + i * spacing))
 
+def show_end_window(winner, player_color, playerId):
+    import tkinter as tk
+    import requests
+
+    root = tk.Tk()
+    root.title("Fin de partie")
+
+    window_width = 350
+    window_height = 180
+
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    x = int((screen_width - window_width) / 2)
+    y = int((screen_height - window_height) / 2)
+
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    root.configure(bg="#2c3e50")
+
+    if winner == "draw":
+        result = "Match nul"
+    elif winner == player_color:
+        result = "Victoire !"
+    else:
+        result = "Défaite..."
+
+    elo_msg = ""
+    if playerId:
+        try:
+            res = requests.get(f"{SERVER_URL}/api/user/{playerId}")
+            if res.status_code == 200:
+                data = res.json()
+                elo_msg = f"Votre nouvel ELO : {data['elo']}"
+        except:
+            elo_msg = ""
+
+    tk.Label(root, text=result, font=("Helvetica", 16, "bold"), bg="#2c3e50", fg="white").pack(pady=10)
+    tk.Label(root, text=elo_msg, font=("Helvetica", 12), bg="#2c3e50", fg="white").pack(pady=5)
+
+    def restart():
+        root.destroy()
+        pygame.quit()
+        subprocess.Popen([sys.executable, "-m", "main"])
+        sys.exit()
+
+    def quit_all():
+        root.destroy()
+        pygame.quit()
+        sys.exit()
+
+    tk.Button(root, text="Rejouer", command=restart, bg="#27ae60", fg="white", font=("Helvetica", 12)).pack(pady=5)
+    tk.Button(root, text="Quitter", command=quit_all, bg="#c0392b", fg="white", font=("Helvetica", 12)).pack(pady=5)
+
+    root.mainloop()
+
 def main(color="white"):
     global gs, is_my_turn
     pygame.init()
@@ -259,6 +315,7 @@ def main(color="white"):
                 "gameId": gameId,
                 "winner": gs.winner
             })
+            show_end_window(gs.winner, player_color, playerId)
             running = False
             continue
 
