@@ -11,6 +11,7 @@ from config.socket_client import sio, game_handler
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from game_state import GameState
+from pieces import King
 from config.matchmaking import SERVER_URL
 
 WIDTH, HEIGHT = 640, 700
@@ -174,6 +175,10 @@ def main(color="white"):
             gs.promote_pawn(tuple(data["end"]), data["promotion"])
             print(f"[PROMOTION] Promotion reçue : {data['promotion']} pour {gs.board.get_piece(*tuple(data['end'])).color}")
 
+        if data.get("is_castling"):
+            print("[INFO] Roque reçu")
+        moved, promotion_pos = gs.play_move(tuple(data["start"]), tuple(data["end"]))
+
         globals().__setitem__('is_my_turn', True)
         print("[DEBUG] C’est à moi de jouer.")
 
@@ -219,6 +224,11 @@ def main(color="white"):
                             promotion_choice = ask_promotion_gui(gs.board.get_piece(*promotion_pos).color)
                             gs.promote_pawn(promotion_pos, promotion_choice)
 
+                        is_castling = False
+                        piece = gs.board.get_piece(*selected_square)
+                        if isinstance(piece, King) and abs(selected_square[1] - actual_col) == 2:
+                            is_castling = True
+
                         is_my_turn = False
                         
                         sio.emit("move", {
@@ -226,7 +236,8 @@ def main(color="white"):
                             "end": (actual_row, actual_col),
                             "gameId": gameId,
                             "playerId": playerId,
-                            "promotion": promotion_choice
+                            "promotion": promotion_choice,
+                            "is_castling": is_castling
                         })
 
                     selected_square = None

@@ -244,7 +244,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('move', ({ start, end, gameId, playerId, promotion}) => {
+    socket.on('move', ({ start, end, gameId, playerId, promotion, is_castling }) => {
         const moveStr = ${start[0]},${start[1]}->${end[0]},${end[1]};
         const now = Date.now();
 
@@ -294,7 +294,7 @@ io.on('connection', (socket) => {
 
         if (targetSocketId) {
                 console.log('[EMIT] opponent_move to ${targetSocketId} from ${socket.id}');
-                io.to(targetSocketId).emit('opponent_move', { start, end, promotion });
+                io.to(targetSocketId).emit('opponent_move', { start, end, promotion, is_castling });
         }
     });
 
