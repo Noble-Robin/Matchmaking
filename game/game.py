@@ -149,9 +149,8 @@ def draw_timers(win, font, white_time, black_time, usernames):
     white_text = font.render(f"{white_label}: {wt_min:02}:{wt_sec:02}", True, (0, 0, 0))
     black_text = font.render(f"{black_label}: {bt_min:02}:{bt_sec:02}", True, (0, 0, 0))
 
-    win.blit(white_text, (20, 10))  # timer du joueur en bas à gauche
-    win.blit(black_text, (WIDTH - black_text.get_width() - 20, 10))  # timer du joueur en haut à droite
-
+    win.blit(white_text, (20, 10))
+    win.blit(black_text, (WIDTH - black_text.get_width() - 20, 10))
 
 def draw_captured_pieces(win, gs):
     spacing = 36
@@ -179,13 +178,8 @@ def show_end_window(winner, player_color, playerId):
 
     window_width = 350
     window_height = 180
-
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-
-    x = int((screen_width - window_width) / 2)
-    y = int((screen_height - window_height) / 2)
-
+    x = (root.winfo_screenwidth() - window_width) // 2
+    y = (root.winfo_screenheight() - window_height) // 2
     root.geometry(f"{window_width}x{window_height}+{x}+{y}")
     root.configure(bg="#2c3e50")
 
@@ -204,7 +198,7 @@ def show_end_window(winner, player_color, playerId):
                 data = res.json()
                 elo_msg = f"Votre nouvel ELO : {data['elo']}"
         except:
-            elo_msg = ""
+            pass
 
     tk.Label(root, text=result, font=("Helvetica", 16, "bold"), bg="#2c3e50", fg="white").pack(pady=10)
     tk.Label(root, text=elo_msg, font=("Helvetica", 12), bg="#2c3e50", fg="white").pack(pady=5)
@@ -323,7 +317,6 @@ def main(color="white"):
         globals().__setitem__('is_my_turn', True)
 
     game_handler["on_opponent_move"] = handle_opponent_move
-
 
     while running:
         pygame.display.set_caption(f"{'À VOUS DE JOUER' if is_my_turn else 'Attente adversaire'} ({player_color})")

@@ -193,7 +193,7 @@ io.on('connection', (socket) => {
     socket.on('register_socket', ({ gameId, playerColor }) => {
         console.log('[REGISTER]gameId=${gameId}, color=${playerColor}, socket=${socket.id}');
         if(!activeGames[gameId]) {
-                console.warn([REGISTER] gameId inconnu : ${gameId});
+                console.warn('[REGISTER] gameId inconnu : ${gameId}');
                 return;
         }
 
@@ -277,8 +277,8 @@ io.on('connection', (socket) => {
         });
 
         db.run(
-          'INSERT INTO moves (game_id, move, player) VALUES (?, ?, ?),
-          [gameId, moveStr, playerId]'
+            'INSERT INTO moves (game_id, move, player) VALUES (?, ?, ?),
+            [gameId, moveStr, playerId]'
         );
 
         let targetSocketId = null;
@@ -303,12 +303,30 @@ io.on('connection', (socket) => {
         if (!players) return;
 
         db.get(`SELECT player_white, player_black FROM current_games WHERE game_id = ?`, [gameId], (err, row) => {
-            if (!err && row) {
-                db.run(`INSERT INTO games (player_white, player_black, winner) VALUES (?, ?, ?)`, [
-                    row.player_white,
-                    row.player_black,
-                    winner === 'draw' ? null : winner
-                ]);
+            if (err || !row) return;
+
+            const { player_white, player_black } = row;
+
+            db.run(`INSERT INTO games (player_white, player_black, winner)` VALUES (?, ?, ?),
+                    [player_white, player_black, winner === 'draw' ? null : winner]);
+
+            if (player_white && player_black && winner !== "draw") {
+                db.get('SELECT elo FROM users WHERE id = ?', [player_white], (errW, white) => {
+                    db.get('SELECT elo FROM users WHERE id = ?', [player_black], (errB, black) => {
+                        if (!errW && !errB && white && black) {
+                            const k = 32;
+                            const expectedWhite = 1 / (1 + Math.pow(10, (black.elo - white.elo) / 400));
+                            const expectedBlack = 1 / (1 + Math.pow(10, (white.elo - black.elo) / 400));
+                            const scoreWhite = winner === "white" ? 1 : 0;
+                            const scoreBlack = winner === "black" ? 1 : 0;
+                            const newWhiteElo = white.elo + Math.round(k * (scoreWhite - expectedWhite));
+                            const newBlackElo = black.elo + Math.round(k * (scoreBlack - expectedBlack));
+
+                            db.run('UPDATE users SET elo = ? WHERE id = ?', [newWhiteElo, player_white]);
+                            db.run('UPDATE users SET elo = ? WHERE id = ?', [newBlackElo, player_black]);
+                        }
+                    });
+                });
             }
 
             db.run(`DELETE FROM current_games WHERE game_id = ?`, [gameId]);
