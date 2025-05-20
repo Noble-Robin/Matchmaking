@@ -10,6 +10,7 @@ class GameState:
         self.current_turn = "white"
         self.move_history = []
         self.winner = None
+        self.captured = {"white": [], "black": []}
 
     def get_valid_moves(self, row, col):
         piece = self.board.get_piece(row, col)
@@ -45,6 +46,11 @@ class GameState:
     def play_move(self, start_pos, end_pos):
         valid_moves = self.get_valid_moves(*start_pos)
         if end_pos in valid_moves:
+            captured_piece = self.board.get_piece(*end_pos)
+            if captured_piece:
+                # Enregistre la pièce capturée par l'adversaire
+                self.captured[captured_piece.color].append(captured_piece.__class__.__name__.lower())
+
             self.board.move_piece(start_pos, end_pos)
             self.move_history.append((start_pos, end_pos))
 
@@ -54,13 +60,12 @@ class GameState:
                 if (piece.color == "white" and end_pos[0] == 0) or (piece.color == "black" and end_pos[0] == 7):
                     promotion_pos = end_pos
 
-            # Inverse le tour ici après tout traitement
+            # Change le tour
             self.current_turn = "black" if self.current_turn == "white" else "white"
             return True, promotion_pos
         return False, None
 
     def promote_pawn(self, position, choice):
-        print(f"[PROMOTION] Promotion en {choice} pour {self.board.get_piece(*position).color}")
         row, col = position
         color = self.board.get_piece(row, col).color
         piece_map = {

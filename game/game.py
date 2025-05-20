@@ -1,10 +1,9 @@
-
 import pygame
 import sys
 import os
+import threading
 import time
 import requests
-import threading
 import tkinter as tk
 from functools import partial
 from config.socket_client import sio, game_handler
@@ -14,19 +13,22 @@ from game_state import GameState
 from pieces import King
 from config.matchmaking import SERVER_URL
 
-WIDTH, HEIGHT = 640, 700
+BOARD_WIDTH = 640
+SIDE_PANEL = 100
+WIDTH = BOARD_WIDTH + 2 * SIDE_PANEL
+HEIGHT = 700
 ROWS, COLS = 8, 8
-SQUARE_SIZE = WIDTH // COLS
+SQUARE_SIZE = BOARD_WIDTH // COLS
+BOARD_TOP = 30
 
-# Couleurs
 WHITE = (245, 245, 245)
+LIGHT_GRAY = (220, 220, 220)
 GRAY = (100, 100, 100)
 DARK = (50, 50, 50)
 HIGHLIGHT = (106, 168, 79)
 SELECTED = (255, 255, 0)
 TARGET = (255, 0, 0)
 
-# Chargement des images
 IMAGES = {}
 
 def load_images():
@@ -38,15 +40,16 @@ def load_images():
             IMAGES[f"{color}_{piece}"] = pygame.transform.scale(pygame.image.load(path), (SQUARE_SIZE, SQUARE_SIZE))
 
 def draw_board(win):
-    win.fill(WHITE)
+    pygame.draw.rect(win, LIGHT_GRAY, (0, 0, SIDE_PANEL, HEIGHT))
+    pygame.draw.rect(win, LIGHT_GRAY, (WIDTH - SIDE_PANEL, 0, SIDE_PANEL, HEIGHT))
+
     for row in range(ROWS):
         for col in range(COLS):
             color = GRAY if (row + col) % 2 == 0 else DARK
-            pygame.draw.rect(
-                win, color,
-                (col * SQUARE_SIZE, row * SQUARE_SIZE + 30, SQUARE_SIZE, SQUARE_SIZE)
-            )
-
+            pygame.draw.rect(win, color, (
+                SIDE_PANEL + col * SQUARE_SIZE,
+                BOARD_TOP + row * SQUARE_SIZE,
+                SQUARE_SIZE, SQUARE_SIZE))
 
 def draw_pieces(win, board, player_color):
     for row in range(ROWS):
@@ -57,7 +60,9 @@ def draw_pieces(win, board, player_color):
             if piece:
                 name = piece.__class__.__name__.lower()
                 key = f"{piece.color}_{name}"
-                win.blit(IMAGES[key], (col * SQUARE_SIZE, row * SQUARE_SIZE + 30))
+                x = SIDE_PANEL + col * SQUARE_SIZE
+                y = row * SQUARE_SIZE
+                win.blit(IMAGES[key], (x, BOARD_TOP + y))
 
 def draw_users(win, white_time, black_time, player_color, white_name="White", black_name="Black"):
     font = pygame.font.SysFont("arial", 20, True)
@@ -90,13 +95,17 @@ def highlight_squares(win, selected_square, moves, player_color):
         row, col = selected_square
         draw_row = row if player_color == "white" else ROWS - 1 - row
         draw_col = col if player_color == "white" else COLS - 1 - col
-        pygame.draw.rect(win, SELECTED, (draw_col * SQUARE_SIZE, draw_row * SQUARE_SIZE + 30, SQUARE_SIZE, SQUARE_SIZE), 4)
+        pygame.draw.rect(win, SELECTED, (
+            SIDE_PANEL + draw_col * SQUARE_SIZE,
+            BOARD_TOP + draw_row * SQUARE_SIZE,
+            SQUARE_SIZE, SQUARE_SIZE), 4)
 
     for row, col in moves:
         draw_row = row if player_color == "white" else ROWS - 1 - row
         draw_col = col if player_color == "white" else COLS - 1 - col
-        pygame.draw.circle(win, TARGET,
-            (draw_col * SQUARE_SIZE + SQUARE_SIZE // 2, draw_row * SQUARE_SIZE + 30 + SQUARE_SIZE // 2), 10)
+        pygame.draw.circle(win, TARGET, (
+            SIDE_PANEL + draw_col * SQUARE_SIZE + SQUARE_SIZE // 2,
+            BOARD_TOP + draw_row * SQUARE_SIZE + SQUARE_SIZE // 2), 10)
 
 def ask_promotion_gui(color):
     choice = []
@@ -128,6 +137,37 @@ def display_winner(win, winner):
     win.blit(label, (WIDTH // 2 - label.get_width() // 2, HEIGHT // 2 - label.get_height() // 2))
     pygame.display.update()
     pygame.time.wait(4000)
+
+def draw_timers(win, font, white_time, black_time, usernames):
+    white_label = usernames.get("white", "Invité")
+    black_label = usernames.get("black", "Invité")
+
+    wt_min, wt_sec = divmod(int(white_time), 60)
+    bt_min, bt_sec = divmod(int(black_time), 60)
+
+    white_text = font.render(f"{white_label}: {wt_min:02}:{wt_sec:02}", True, (0, 0, 0))
+    black_text = font.render(f"{black_label}: {bt_min:02}:{bt_sec:02}", True, (0, 0, 0))
+
+    win.blit(white_text, (20, 10))  # timer du joueur en bas à gauche
+    win.blit(black_text, (WIDTH - black_text.get_width() - 20, 10))  # timer du joueur en haut à droite
+
+
+def draw_captured_pieces(win, gs):
+    spacing = 36
+    icon_size = 32
+    y_start = 80
+
+    for i, piece in enumerate(gs.captured["black"]):
+        img = IMAGES.get(f"black_{piece}")
+        if img:
+            scaled = pygame.transform.scale(img, (icon_size, icon_size))
+            win.blit(scaled, (WIDTH - SIDE_PANEL + 10, y_start + i * spacing))
+
+    for i, piece in enumerate(gs.captured["white"]):
+        img = IMAGES.get(f"white_{piece}")
+        if img:
+            scaled = pygame.transform.scale(img, (icon_size, icon_size))
+            win.blit(scaled, (10, y_start + i * spacing))
 
 def main(color="white"):
     global gs, is_my_turn
@@ -189,27 +229,26 @@ def main(color="white"):
     })
 
     def handle_opponent_move(data):
-        print(f"[DEBUG] Reçu coup de l’adversaire : {data}")
         moved, promotion_pos = gs.play_move(tuple(data["start"]), tuple(data["end"]))
 
         if data.get("promotion"):
             gs.promote_pawn(tuple(data["end"]), data["promotion"])
-            print(f"[PROMOTION] Promotion reçue : {data['promotion']} pour {gs.board.get_piece(*tuple(data['end'])).color}")
+
 
         if data.get("is_castling"):
-            print("[INFO] Roque reçu")
-        moved, promotion_pos = gs.play_move(tuple(data["start"]), tuple(data["end"]))
+            moved, promotion_pos = gs.play_move(tuple(data["start"]), tuple(data["end"]))
 
         globals().__setitem__('is_my_turn', True)
-        print("[DEBUG] C’est à moi de jouer.")
 
     game_handler["on_opponent_move"] = handle_opponent_move
+
 
     while running:
         pygame.display.set_caption(f"{'À VOUS DE JOUER' if is_my_turn else 'Attente adversaire'} ({player_color})")
         clock.tick(60)
         draw_board(win)
         draw_pieces(win, gs.board, player_color)
+        draw_captured_pieces(win, gs)
         highlight_squares(win, selected_square, valid_moves, player_color)
         draw_users(win, white_time, black_time, player_color, white_name, black_name)
         pygame.display.flip()
@@ -229,8 +268,14 @@ def main(color="white"):
 
             if event.type == pygame.MOUSEBUTTONDOWN and is_my_turn:
                 pos = pygame.mouse.get_pos()
-                row = (pos[1] - 30) // SQUARE_SIZE
-                col = pos[0] // SQUARE_SIZE
+                mouse_x, mouse_y = pos
+
+                # retirer la marge du haut et des côtés
+                if mouse_y < BOARD_TOP or mouse_x < SIDE_PANEL or mouse_x > SIDE_PANEL + BOARD_WIDTH:
+                    continue  # clic en dehors du plateau
+
+                row = (mouse_y - BOARD_TOP) // SQUARE_SIZE
+                col = (mouse_x - SIDE_PANEL) // SQUARE_SIZE
                 if row < 0 or row >= 8 or col < 0 or col >= 8:
                     continue
                 actual_row = row if player_color == "white" else ROWS - 1 - row
