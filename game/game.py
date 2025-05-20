@@ -231,6 +231,18 @@ def main(color="white"):
     win = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Jeu d'échecs")
 
+    pygame.mixer.init()
+    sound_move = pygame.mixer.Sound("assets/sounds/move-self.wav")
+    sound_move_opponent = pygame.mixer.Sound("assets/sounds/move-opponent.wav")
+    sound_capture = pygame.mixer.Sound("assets/sounds/capture.wav")
+    sound_check = pygame.mixer.Sound("assets/sounds/move-check.wav")
+    sound_castle = pygame.mixer.Sound("assets/sounds/castle.wav")
+    sound_promote = pygame.mixer.Sound("assets/sounds/promote.wav")
+    sound_game_start = pygame.mixer.Sound("assets/sounds/game-start.wav")
+    sound_game_end = pygame.mixer.Sound("assets/sounds/game-end.wav")
+
+    sound_game_start.play()
+
     load_images()
     clock = pygame.time.Clock()
     gs = GameState()
@@ -285,14 +297,28 @@ def main(color="white"):
     })
 
     def handle_opponent_move(data):
-        moved, promotion_pos = gs.play_move(tuple(data["start"]), tuple(data["end"]))
+        start = tuple(data["start"])
+        end = tuple(data["end"])
 
-        if data.get("promotion"):
-            gs.promote_pawn(tuple(data["end"]), data["promotion"])
+        target_piece = gs.board.get_piece(*end)
+        moving_piece = gs.board.get_piece(*start)
 
+        moved, promotion_pos = gs.play_move(start, end)
 
-        if data.get("is_castling"):
-            moved, promotion_pos = gs.play_move(tuple(data["start"]), tuple(data["end"]))
+        if moved:
+            if data.get("promotion"):
+                gs.promote_pawn(end, data["promotion"])
+
+            if gs.board.is_in_check(player_color):
+                sound_check.play()
+            elif data.get("promotion"):
+                sound_promote.play()
+            elif data.get("is_castling") and isinstance(moving_piece, King):
+                sound_castle.play()
+            elif target_piece:
+                sound_capture.play()
+            else:
+                sound_move_opponent.play()
 
         globals().__setitem__('is_my_turn', True)
 
@@ -310,6 +336,7 @@ def main(color="white"):
         pygame.display.flip()
 
         if gs.is_game_over():
+            sound_game_end.play()
             display_winner(win, gs.winner)
             sio.emit("end_game", {
                 "gameId": gameId,
@@ -327,31 +354,43 @@ def main(color="white"):
                 pos = pygame.mouse.get_pos()
                 mouse_x, mouse_y = pos
 
-                # retirer la marge du haut et des côtés
                 if mouse_y < BOARD_TOP or mouse_x < SIDE_PANEL or mouse_x > SIDE_PANEL + BOARD_WIDTH:
-                    continue  # clic en dehors du plateau
+                    continue
 
                 row = (mouse_y - BOARD_TOP) // SQUARE_SIZE
                 col = (mouse_x - SIDE_PANEL) // SQUARE_SIZE
+
                 if row < 0 or row >= 8 or col < 0 or col >= 8:
                     continue
+
                 actual_row = row if player_color == "white" else ROWS - 1 - row
                 actual_col = col if player_color == "white" else COLS - 1 - col
 
                 if selected_square:
+                    target_piece = gs.board.get_piece(actual_row, actual_col)
+                    moving_piece = gs.board.get_piece(*selected_square)
+
                     moved, promotion_pos = gs.play_move(selected_square, (actual_row, actual_col))
+
                     if moved:
-                        
                         promotion_choice = None
                         if promotion_pos:
                             promotion_choice = ask_promotion_gui(gs.board.get_piece(*promotion_pos).color)
                             gs.promote_pawn(promotion_pos, promotion_choice)
 
-                        is_castling = False
-                        piece = gs.board.get_piece(*selected_square)
-                        if isinstance(piece, King) and abs(selected_square[1] - actual_col) == 2:
-                            is_castling = True
+                        enemy_color = "black" if player_color == "white" else "white"
+                        if gs.board.is_in_check(enemy_color):
+                            sound_check.play()
+                        elif promotion_pos:
+                            sound_promote.play()
+                        elif isinstance(moving_piece, King) and abs(selected_square[1] - actual_col) == 2:
+                            sound_castle.play()
+                        elif target_piece:
+                            sound_capture.play()
+                        else:
+                            sound_move.play()
 
+                        is_castling = isinstance(moving_piece, King) and abs(selected_square[1] - actual_col) == 2
                         is_my_turn = False
                         
                         sio.emit("move", {
