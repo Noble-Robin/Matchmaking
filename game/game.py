@@ -59,26 +59,31 @@ def draw_pieces(win, board, player_color):
                 key = f"{piece.color}_{name}"
                 win.blit(IMAGES[key], (col * SQUARE_SIZE, row * SQUARE_SIZE + 30))
 
-def draw_timers(win, white_time, black_time, player_color):
-        font = pygame.font.SysFont("arial", 20, True)
-        w_min, w_sec = divmod(int(white_time), 60)
-        b_min, b_sec = divmod(int(black_time), 60)
+def draw_users(win, white_time, black_time, player_color, white_name="White", black_name="Black"):
+    font = pygame.font.SysFont("arial", 20, True)
 
-        white_text = f"Blanc: {w_min:02}:{w_sec:02}"
-        black_text = f"Noir : {b_min:02}:{b_sec:02}"
+    w_min, w_sec = divmod(int(white_time), 60)
+    b_min, b_sec = divmod(int(black_time), 60)
 
-        white_label = font.render(white_text, True, (255, 255, 255))
-        black_label = font.render(black_text, True, (255, 255, 255))
+    white_label = font.render(f"{white_name}", True, (255, 255, 255))
+    black_label = font.render(f"{black_name}", True, (255, 255, 255))
 
-        pygame.draw.rect(win, (30, 30, 30), (0, 0, WIDTH, 30))
-        pygame.draw.rect(win, (30, 30, 30), (0, HEIGHT - 30, WIDTH, 30))
+    white_time_label = font.render(f"{w_min:02}:{w_sec:02}", True, (255, 255, 255))
+    black_time_label = font.render(f"{b_min:02}:{b_sec:02}", True, (255, 255, 255))
 
-        if player_color == "white":
-            win.blit(white_label, (10, HEIGHT - 25))
-            win.blit(black_label, (10, 5))
-        else:
-            win.blit(black_label, (10, HEIGHT - 25))
-            win.blit(white_label, (10, 5))
+    pygame.draw.rect(win, (30, 30, 30), (0, 0, WIDTH, 30))
+    pygame.draw.rect(win, (30, 30, 30), (0, HEIGHT - 30, WIDTH, 30))
+
+    if player_color == "white":
+        win.blit(black_label, (10, 5))
+        win.blit(black_time_label, (WIDTH - 70, 5))
+        win.blit(white_label, (10, HEIGHT - 25))
+        win.blit(white_time_label, (WIDTH - 70, HEIGHT - 25))
+    else:
+        win.blit(white_label, (10, 5))
+        win.blit(white_time_label, (WIDTH - 70, 5))
+        win.blit(black_label, (10, HEIGHT - 25))
+        win.blit(black_time_label, (WIDTH - 70, HEIGHT - 25))
 
 def highlight_squares(win, selected_square, moves, player_color):
     if selected_square:
@@ -141,6 +146,22 @@ def main(color="white"):
     gameId = sys.argv[2] if len(sys.argv) > 2 else ""
     playerId = sys.argv[3] if len(sys.argv) > 3 else ""
 
+    white_name = "White"
+    black_name = "Black"
+
+    if len(sys.argv) >= 7:
+        my_name = sys.argv[4]
+        my_elo = sys.argv[5]
+        opponent_info = sys.argv[6]
+
+        full_name = f"{my_name} ({my_elo})"
+        if color == "white":
+            white_name = full_name
+            black_name = opponent_info
+        else:
+            white_name = opponent_info
+            black_name = full_name
+
     white_time = 600
     black_time = 600
 
@@ -190,7 +211,7 @@ def main(color="white"):
         draw_board(win)
         draw_pieces(win, gs.board, player_color)
         highlight_squares(win, selected_square, valid_moves, player_color)
-        draw_timers(win, white_time, black_time, player_color)
+        draw_users(win, white_time, black_time, player_color, white_name, black_name)
         pygame.display.flip()
 
         if gs.is_game_over():

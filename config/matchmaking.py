@@ -30,11 +30,11 @@ def start_matchmaking(root, on_error_callback, user_info):
                     response = requests.get(f"{SERVER_URL}/api/user/{data['opponent']}")
                     if response.status_code == 200:
                         opponent_data = response.json()
-                        opponent_info = f"{opponent_data['username']} (ELO: {opponent_data['elo']})"
+                        opponent_info = f"{opponent_data['username']} ({opponent_data['elo']})"
                     else:
                         opponent_info = "Joueur inconnu"
                 else:
-                    opponent_info = "Invité"
+                    opponent_info = "Invité (1200)"
             except Exception as e:
                 opponent_info = f"Erreur de récupération : {e}"
 
@@ -44,7 +44,15 @@ def start_matchmaking(root, on_error_callback, user_info):
             root.update()
             root.iconify()
 
-            subprocess.Popen(["python", "-m", "game.game", data['color'], data['gameId'], str(user_info["id"] or "")])
+            subprocess.Popen([
+                "python", "-m", "game.game",
+                data['color'],
+                data['gameId'],
+                str(user_info["id"] or ""),
+                user_info["username"],
+                str(user_info["elo"]),
+                opponent_info,
+            ])
 
         root.after(0, update_ui)
 

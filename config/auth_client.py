@@ -2,6 +2,8 @@ import requests
 import tkinter as tk
 from tkinter import messagebox
 
+from config.matchmaking import SERVER_URL
+
 def login_menu(root, on_success):
     for widget in root.winfo_children():
         widget.destroy()
@@ -27,7 +29,7 @@ def login_menu(root, on_success):
             messagebox.showwarning("Champs manquants", "Merci de remplir tous les champs.")
             return
         try:
-            response = requests.post("https://b84b-80-70-37-74.ngrok-free.app/api/auth", json={
+            response = requests.post(f"{SERVER_URL}/api/auth", json={
                 "username": username,
                 "password": password
             })
